@@ -358,6 +358,14 @@ async def ask_question(request: ChatRequest) -> ChatResponse:
         return ChatResponse(response=fallback_response, sources=[])
 
 
+def format_timestamp(seconds: float) -> str:
+    """Format seconds into MM:SS timestamp format."""
+    if not seconds or seconds == 0:
+        return "start"
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins}:{secs:02d}"
+
 async def get_chatgpt_response_with_rag(message: str, return_sources: bool = False):
     """Get a response from ChatGPT API with RAG context and optionally return sources."""
     if not openai_client:
@@ -372,11 +380,24 @@ async def get_chatgpt_response_with_rag(message: str, return_sources: bool = Fal
             context_parts = []
             for result in similar_docs:
                 video_title = result['document']['metadata'].get('video_title', 'Unknown video')
-                context_parts.append(f"From video '{video_title}': {result['document']['content']}")
+                video_id = result['document']['metadata'].get('video_id', '')
+                start_time = result['document']['metadata'].get('start_time', 0)
+                
+                # Construct YouTube URL with timestamp
+                youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+                if start_time > 0:
+                    youtube_url += f"&t={int(start_time)}s"
+                
+                # Format timestamp for display
+                timestamp_str = format_timestamp(start_time)
+                
+                context_parts.append(f"From video '{video_title}' (Watch: {youtube_url} at {timestamp_str}): {result['document']['content']}")
                 sources.append({
                     "content": result['document']['content'],
                     "metadata": result['document']['metadata'],
-                    "score": result['score']
+                    "score": result['score'],
+                    "youtube_url": youtube_url,
+                    "timestamp": start_time
                 })
             context = "\n\n".join(context_parts)
             context = f"\n\nSOURCE MATERIAL - Use this information to answer the question:\n{context}\n\n"
@@ -384,12 +405,21 @@ async def get_chatgpt_response_with_rag(message: str, return_sources: bool = Fal
         system_message = """You are a helpful, friendly AI assistant with access to a knowledge base. 
 
 CRITICAL INSTRUCTIONS:
-- When context is provided, you MUST use it as your only source for answering
+- When context is provided, you MUST use it as your primary source for answering
 - Always reference specific details, numbers, names, and quotes from the context
+- Do not give generic responses when specific context is available
+- If the context contains relevant information, incorporate it directly into your answer
+- Use phrases like "According to the source..." or "The video mentions..." when citing context
+- Be specific about what the source material says
+- When using information from videos, include the YouTube link and timestamp in your response
+- Format video references like: "According to [video title] (Watch: [YouTube URL] at [timestamp])..."
 
 Guidelines:
-- If context is not relevant or no context is provided, just say you don't know.
-- Keep responses concise, helpful, and engaging"""
+- If context is provided and relevant, use it as your primary source
+- If context is not relevant or no context is provided, respond based on your general knowledge
+- Keep responses concise, helpful, and engaging
+- Always acknowledge when you're using information from the provided context
+- Include video links when citing video content"""
 
         # Prepare messages for ChatGPT
         messages = [
