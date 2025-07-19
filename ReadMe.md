@@ -122,7 +122,6 @@ curl "http://localhost:8000/vector-stats"
 fastapi-vibe-coding/
 ├── main.py              # FastAPI application
 ├── vector_db.py         # Milvus vector database implementation
-├── docker-compose.yml   # Milvus Docker setup
 ├── requirements.txt     # Python dependencies
 ├── .env                 # Environment variables (create from env.example)
 ├── env.example          # Environment variables template
